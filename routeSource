@@ -1,1855 +1,364 @@
-<!DOCTYPE html> 
-
-<html lang="en"> 
-
-<head> 
-
-    <meta charset="UTF-8"> 
-
-    <meta name="viewport" content="width=device-width, initial-scale=1.0"> 
-
-    <title>Route Planner with Real Area Avoidance</title> 
-
-     
-
-    <!-- Include Leaflet CSS and JS --> 
-
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" 
-
-          integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" 
-
-          crossorigin=""/> 
-
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" 
-
-            integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" 
-
-            crossorigin=""></script> 
-
-     
-
-    <style> 
-
-        body { 
-
-            margin: 0; 
-
-            padding: 20px; 
-
-            font-family: Arial, sans-serif; 
-
-        } 
-
-        #map { 
-
-            height: 500px; 
-
-            width: 100%; 
-
-            margin-top: 20px; 
-
-        } 
-
-        .route-form { 
-
-            background: #f5f5f5; 
-
-            padding: 15px; 
-
-            border-radius: 5px; 
-
-            margin-bottom: 20px; 
-
-        } 
-
-        .form-group { 
-
-            margin-bottom: 10px; 
-
-            position: relative; 
-
-        } 
-
-        label { 
-
-            display: inline-block; 
-
-            width: 80px; 
-
-        } 
-
-        input { 
-
-            padding: 8px; 
-
-            width: 300px; 
-
-            border: 1px solid #ddd; 
-
-            border-radius: 3px; 
-
-        } 
-
-        button { 
-
-            background: #4CAF50; 
-
-            color: white; 
-
-            padding: 10px 20px; 
-
-            border: none; 
-
-            border-radius: 3px; 
-
-            cursor: pointer; 
-
-            margin-right: 10px; 
-
-        } 
-
-        button:hover { 
-
-            background: #45a049; 
-
-        } 
-
-        button:disabled { 
-
-            background: #cccccc; 
-
-            cursor: not-allowed; 
-
-        } 
-
-        .route-info { 
-
-            margin-top: 10px; 
-
-            padding: 10px; 
-
-            background: #e8f5e8; 
-
-            border-radius: 3px; 
-
-        } 
-
-        .autocomplete-items { 
-
-            position: absolute; 
-
-            border: 1px solid #d4d4d4; 
-
-            border-bottom: none; 
-
-            border-top: none; 
-
-            z-index: 99; 
-
-            top: 100%; 
-
-            left: 84px; 
-
-            right: 0; 
-
-            background: white; 
-
-            max-height: 200px; 
-
-            overflow-y: auto; 
-
-        } 
-
-        .autocomplete-items div { 
-
-            padding: 10px; 
-
-            cursor: pointer; 
-
-            border-bottom: 1px solid #d4d4d4; 
-
-        } 
-
-        .autocomplete-items div:hover { 
-
-            background-color: #e9e9e9; 
-
-        } 
-
-        .autocomplete-active { 
-
-            background-color: DodgerBlue !important; 
-
-            color: #ffffff; 
-
-        } 
-
-        .clear-btn { 
-
-            background: #f44336; 
-
-        } 
-
-        .clear-btn:hover { 
-
-            background: #d32f2f; 
-
-        } 
-
-        .avoidance-btn { 
-
-            background: #ff9800; 
-
-        } 
-
-        .avoidance-btn:hover { 
-
-            background: #e68900; 
-
-        } 
-
-        .loading-indicator { 
-
-            display: none; 
-
-            position: absolute; 
-
-            right: 10px; 
-
-            top: 50%; 
-
-            transform: translateY(-50%); 
-
-            width: 20px; 
-
-            height: 20px; 
-
-            border: 2px solid #f3f3f3; 
-
-            border-top: 2px solid #3498db; 
-
-            border-radius: 50%; 
-
-            animation: spin 1s linear infinite; 
-
-        } 
-
-        @keyframes spin { 
-
-            0% { transform: translateY(-50%) rotate(0deg); } 
-
-            100% { transform: translateY(-50%) rotate(360deg); } 
-
-        } 
-
-        .cache-indicator { 
-
-            position: absolute; 
-
-            right: 35px; 
-
-            top: 50%; 
-
-            transform: translateY(-50%); 
-
-            font-size: 12px; 
-
-            color: #888; 
-
-            display: none; 
-
-        } 
-
-        .control-panel { 
-
-            background: white; 
-
-            padding: 10px; 
-
-            border-radius: 5px; 
-
-            box-shadow: 0 0 10px rgba(0,0,0,0.2); 
-
-            margin-bottom: 10px; 
-
-        } 
-
-        .avoidance-list { 
-
-            margin-top: 10px; 
-
-            max-height: 150px; 
-
-            overflow-y: auto; 
-
-            border: 1px solid #ddd; 
-
-            border-radius: 3px; 
-
-            padding: 5px; 
-
-        } 
-
-        .avoidance-item { 
-
-            display: flex; 
-
-            justify-content: space-between; 
-
-            align-items: center; 
-
-            padding: 5px; 
-
-            border-bottom: 1px solid #eee; 
-
-        } 
-
-        .avoidance-item:last-child { 
-
-            border-bottom: none; 
-
-        } 
-
-        .remove-avoidance { 
-
-            background: #f44336; 
-
-            color: white; 
-
-            border: none; 
-
-            border-radius: 3px; 
-
-            cursor: pointer; 
-
-            padding: 3px 8px; 
-
-        } 
-
-        .warning-message { 
-
-            color: #ff9800; 
-
-            font-style: italic; 
-
-            margin-top: 10px; 
-
-        } 
-
-        .success-message { 
-
-            color: #4CAF50; 
-
-            font-style: italic; 
-
-            margin-top: 10px; 
-
-        } 
-
-        .waypoint-marker { 
-
-            background-color: #ffeb3b; 
-
-            border: 2px solid #ff9800; 
-
-            border-radius: 50%; 
-
-            width: 12px; 
-
-            height: 12px; 
-
-        } 
-
-    </style> 
-
-</head> 
-
-<body> 
-
-    <h1>Route Planner with Real Area Avoidance</h1> 
-
-     
-
-    <div class="route-form"> 
-
-        <div class="form-group"> 
-
-            <label for="start">Start:</label> 
-
-            <input type="text" id="start" placeholder="Enter start address" autocomplete="off"> 
-
-            <div class="loading-indicator" id="start-loading"></div> 
-
-            <div class="cache-indicator" id="start-cache">cached</div> 
-
-        </div> 
-
-        <div class="form-group"> 
-
-            <label for="end">End:</label> 
-
-            <input type="text" id="end" placeholder="Enter end address" autocomplete="off"> 
-
-            <div class="loading-indicator" id="end-loading"></div> 
-
-            <div class="cache-indicator" id="end-cache">cached</div> 
-
-        </div> 
-
-        <button id="calculate-btn" onclick="calculateRoute()">Calculate Route</button> 
-
-        <button onclick="clearRoute()" class="clear-btn">Clear Route</button> 
-
-        <button id="avoidance-btn" onclick="toggleAvoidanceMode()" class="avoidance-btn">Draw Avoidance Areas</button> 
-
-         
-
-        <div id="routeInfo" class="route-info" style="display: none;"> 
-
-            <!-- Route information will be displayed here --> 
-
-        </div> 
-
-         
-
-        <div id="avoidance-controls" style="display: none; margin-top: 15px;"> 
-
-            <div class="control-panel"> 
-
-                <h3 style="margin-top: 0;">Area Avoidance</h3> 
-
-                <p>Click on the map to draw polygons around areas to avoid. Double-click to complete a polygon.</p> 
-
-                <button onclick="finishDrawing()">Finish Drawing</button> 
-
-                <button onclick="clearAvoidanceAreas()" class="clear-btn" style="margin-left: 10px;">Clear All Areas</button> 
-
-                 
-
-                <div class="avoidance-list" id="avoidance-list"> 
-
-                    <!-- Avoidance areas will be listed here --> 
-
-                </div> 
-
-                <div id="avoidance-status" class="warning-message"> 
-
-                    Draw areas you want the route to avoid 
-
-                </div> 
-
-            </div> 
-
-        </div> 
-
-    </div> 
-
-     
-
-    <div id="map"></div> 
-
- 
-
-    <script> 
-
-        // Initialize the map 
-
-        var map = L.map('map').setView([51.505, -0.09], 13); 
-
-         
-
-        // Add OpenStreetMap tile layer 
-
-        L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { 
-
-            maxZoom: 19, 
-
-            attribution: '© <a href="http://www.openstreetmap.org/copyright">OpenStreetMap</a>' 
-
-        }).addTo(map); 
-
- 
-
-        // Variables to store markers and route line 
-
-        var startMarker, endMarker, routeLine; 
-
-        var startCoords = null; 
-
-        var endCoords = null; 
-
-        var waypointMarkers = []; 
-
- 
-
-        // Cache for geocoding results 
-
-        var geocodingCache = new Map(); 
-
-         
-
-        // Debounce timers 
-
-        var debounceTimers = {}; 
-
- 
-
-        // Variables for area avoidance 
-
-        var avoidanceMode = false; 
-
-        var avoidanceAreas = []; 
-
-        var avoidancePolygons = []; 
-
-        var currentPolygon = null; 
-
-        var currentPolygonPoints = []; 
-
- 
-
-        // Initialize autocomplete for both input fields 
-
-        initAutocomplete('start', function(coords, address) { 
-
-            startCoords = coords; 
-
-            updateMarker('start', coords, address); 
-
-            updateCalculateButton(); 
-
-        }); 
-
-         
-
-        initAutocomplete('end', function(coords, address) { 
-
-            endCoords = coords; 
-
-            updateMarker('end', coords, address); 
-
-            updateCalculateButton(); 
-
-        }); 
-
- 
-
-        // Function to initialize autocomplete for an input field 
-
-        function initAutocomplete(inputId, onSelectCallback) { 
-
-            var input = document.getElementById(inputId); 
-
-            var loadingIndicator = document.getElementById(inputId + '-loading'); 
-
-            var cacheIndicator = document.getElementById(inputId + '-cache'); 
-
-            var currentFocus; 
-
-             
-
-            // Debounced input handler 
-
-            input.addEventListener('input', function(e) { 
-
-                var val = this.value.trim(); 
-
-                closeAllLists(); 
-
-                if (!val) { 
-
-                    loadingIndicator.style.display = 'none'; 
-
-                    cacheIndicator.style.display = 'none'; 
-
-                    return false; 
-
-                } 
-
-                 
-
-                // Clear previous timer 
-
-                if (debounceTimers[inputId]) { 
-
-                    clearTimeout(debounceTimers[inputId]); 
-
-                } 
-
-                 
-
-                // Show loading indicator 
-
-                loadingIndicator.style.display = 'block'; 
-
-                cacheIndicator.style.display = 'none'; 
-
-                 
-
-                // Set new timer with debounce delay 
-
-                debounceTimers[inputId] = setTimeout(() => { 
-
-                    currentFocus = -1; 
-
-                     
-
-                    // Check cache first 
-
-                    var cacheKey = val.toLowerCase(); 
-
-                    if (geocodingCache.has(cacheKey)) { 
-
-                        // Use cached results 
-
-                        var cachedData = geocodingCache.get(cacheKey); 
-
-                        displayAutocompleteResults(input, cachedData, onSelectCallback); 
-
-                        loadingIndicator.style.display = 'none'; 
-
-                        cacheIndicator.style.display = 'block'; 
-
-                        return; 
-
-                    } 
-
-                     
-
-                    // Use Nominatim geocoding API for address search 
-
-                    fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(val)}&limit=5&addressdetails=1`) 
-
-                        .then(response => response.json()) 
-
-                        .then(data => { 
-
-                            // Cache the results 
-
-                            geocodingCache.set(cacheKey, data); 
-
-                            displayAutocompleteResults(input, data, onSelectCallback); 
-
-                            loadingIndicator.style.display = 'none'; 
-
-                        }) 
-
-                        .catch(error => { 
-
-                            console.error('Geocoding error:', error); 
-
-                            loadingIndicator.style.display = 'none'; 
-
-                        }); 
-
-                }, 300); 
-
-            }); 
-
-             
-
-            input.addEventListener('keydown', function(e) { 
-
-                var items = document.getElementById(this.id + "autocomplete-list"); 
-
-                if (items) items = items.getElementsByTagName("div"); 
-
-                 
-
-                if (e.keyCode == 40) { 
-
-                    currentFocus++; 
-
-                    addActive(items); 
-
-                    e.preventDefault(); 
-
-                } else if (e.keyCode == 38) { 
-
-                    currentFocus--; 
-
-                    addActive(items); 
-
-                    e.preventDefault(); 
-
-                } else if (e.keyCode == 13) { 
-
-                    e.preventDefault(); 
-
-                    if (currentFocus > -1 && items) { 
-
-                        items[currentFocus].click(); 
-
-                    } else if (this.value.trim()) { 
-
-                        if (items && items.length > 0) { 
-
-                            items[0].click(); 
-
-                        } 
-
-                    } 
-
-                } 
-
-            }); 
-
-             
-
-            function displayAutocompleteResults(input, data, onSelectCallback) { 
-
-                var autocompleteList = document.createElement("div"); 
-
-                autocompleteList.setAttribute("id", input.id + "autocomplete-list"); 
-
-                autocompleteList.setAttribute("class", "autocomplete-items"); 
-
-                input.parentNode.appendChild(autocompleteList); 
-
-                 
-
-                if (data.length === 0) { 
-
-                    var noResults = document.createElement("div"); 
-
-                    noResults.innerHTML = "No results found"; 
-
-                    noResults.style.color = "#888"; 
-
-                    noResults.style.fontStyle = "italic"; 
-
-                    autocompleteList.appendChild(noResults); 
-
-                    return; 
-
-                } 
-
-                 
-
-                data.forEach(place => { 
-
-                    var item = document.createElement("div"); 
-
-                    var displayText = place.display_name; 
-
-                    if (displayText.length > 60) { 
-
-                        displayText = displayText.substring(0, 60) + '...'; 
-
-                    } 
-
-                    item.innerHTML = "<strong>" + displayText + "</strong>"; 
-
-                    item.innerHTML += "<br><small>Lat: " + place.lat + ", Lon: " + place.lon + "</small>"; 
-
-                     
-
-                    item.addEventListener('click', function() { 
-
-                        input.value = place.display_name; 
-
-                        closeAllLists(); 
-
-                        var coords = [parseFloat(place.lat), parseFloat(place.lon)]; 
-
-                        onSelectCallback(coords, place.display_name); 
-
-                    }); 
-
-                    autocompleteList.appendChild(item); 
-
-                }); 
-
-            } 
-
-             
-
-            function addActive(items) { 
-
-                if (!items || items.length === 0) return false; 
-
-                removeActive(items); 
-
-                if (currentFocus >= items.length) currentFocus = 0; 
-
-                if (currentFocus < 0) currentFocus = items.length - 1; 
-
-                items[currentFocus].classList.add("autocomplete-active"); 
-
-            } 
-
-             
-
-            function removeActive(items) { 
-
-                if (!items) return; 
-
-                for (var i = 0; i < items.length; i++) { 
-
-                    items[i].classList.remove("autocomplete-active"); 
-
-                } 
-
-            } 
-
-             
-
-            function closeAllLists(elmnt) { 
-
-                var items = document.getElementsByClassName("autocomplete-items"); 
-
-                for (var i = 0; i < items.length; i++) { 
-
-                    if (elmnt != items[i] && elmnt != input) { 
-
-                        items[i].parentNode.removeChild(items[i]); 
-
-                    } 
-
-                } 
-
-            } 
-
-             
-
-            document.addEventListener('click', function(e) { 
-
-                closeAllLists(e.target); 
-
-            }); 
-
-        } 
-
- 
-
-        // Function to update markers when an address is selected 
-
-        function updateMarker(type, coords, address) { 
-
-            if (type === 'start' && startMarker) { 
-
-                map.removeLayer(startMarker); 
-
-            } else if (type === 'end' && endMarker) { 
-
-                map.removeLayer(endMarker); 
-
-            } 
-
-             
-
-            var marker = L.marker(coords).addTo(map) 
-
-                .bindPopup("<b>" + (type === 'start' ? 'Start' : 'End') + "</b><br>" + address) 
-
-                .openPopup(); 
-
-             
-
-            if (type === 'start') { 
-
-                startMarker = marker; 
-
-            } else { 
-
-                endMarker = marker; 
-
-            } 
-
-             
-
-            if (startCoords && endCoords) { 
-
-                var bounds = L.latLngBounds([startCoords, endCoords]); 
-
-                map.fitBounds(bounds, { padding: [20, 20] }); 
-
-            } else { 
-
-                map.setView(coords, 13); 
-
-            } 
-
-        } 
-
- 
-
-        // Function to update calculate button state 
-
-        function updateCalculateButton() { 
-
-            var calculateBtn = document.getElementById('calculate-btn'); 
-
-            if (startCoords && endCoords) { 
-
-                calculateBtn.disabled = false; 
-
-            } else { 
-
-                calculateBtn.disabled = true; 
-
-            } 
-
-        } 
-
- 
-
-        // Function to calculate route 
-
-        function calculateRoute() { 
-
-            if (!startCoords || !endCoords) { 
-
-                alert('Please select both start and end addresses from the autocomplete suggestions.'); 
-
-                return; 
-
-            } 
-
-             
-
-            if (routeLine) { 
-
-                map.removeLayer(routeLine); 
-
-                routeLine = null; 
-
-            } 
-
-             
-
-            // Clear previous waypoint markers 
-
-            clearWaypointMarkers(); 
-
-             
-
-            document.getElementById('routeInfo').innerHTML = '<em>Calculating route...</em>'; 
-
-            document.getElementById('routeInfo').style.display = 'block'; 
-
-             
-
-            calculateRouteWithAvoidance(startCoords, endCoords); 
-
-        } 
-
-         
-
-        // Main function to calculate route that avoids drawn areas 
-
-        function calculateRouteWithAvoidance(start, end) { 
-
-            if (avoidanceAreas.length === 0) { 
-
-                // No avoidance areas, use direct route 
-
-                getDirectRoute(start, end); 
-
-                return; 
-
-            } 
-
-             
-
-            // Calculate waypoints to avoid the areas 
-
-            var waypoints = calculateAvoidanceWaypoints(start, end); 
-
-             
-
-            if (waypoints.length === 0) { 
-
-                // Fallback to direct route 
-
-                getDirectRoute(start, end); 
-
-                document.getElementById('avoidance-status').textContent =  
-
-                    '⚠ Could not calculate route around all areas'; 
-
-                document.getElementById('avoidance-status').className = 'warning-message'; 
-
-                return; 
-
-            } 
-
-             
-
-            // Show waypoints on map 
-
-            waypoints.forEach(function(waypoint, index) { 
-
-                var marker = L.circleMarker(waypoint, { 
-
-                    color: '#ff9800', 
-
-                    fillColor: '#ffeb3b', 
-
-                    fillOpacity: 0.8, 
-
-                    radius: 6 
-
-                }).addTo(map).bindPopup('Avoidance Waypoint ' + (index + 1)); 
-
-                waypointMarkers.push(marker); 
-
-            }); 
-
-             
-
-            // Build route with waypoints 
-
-            var allPoints = [start, ...waypoints, end]; 
-
-            var coordsString = allPoints.map(point => point[1] + ',' + point[0]).join(';'); 
-
-             
-
-            var url = 'https://router.project-osrm.org/route/v1/driving/' + coordsString +  
-
-                     '?overview=full&geometries=geojson&steps=true'; 
-
-             
-
-            fetch(url) 
-
-                .then(response => response.json()) 
-
-                .then(data => { 
-
-                    if (data.code === 'Ok') { 
-
-                        displayRoute(data.routes[0]); 
-
-                        document.getElementById('avoidance-status').textContent =  
-
-                            '✓ Route successfully avoids all areas'; 
-
-                        document.getElementById('avoidance-status').className = 'success-message'; 
-
-                    } else { 
-
-                        // Fallback to direct route 
-
-                        getDirectRoute(start, end); 
-
-                        document.getElementById('avoidance-status').textContent =  
-
-                            '⚠ Could not calculate route around all areas'; 
-
-                        document.getElementById('avoidance-status').className = 'warning-message'; 
-
-                    } 
-
-                }) 
-
-                .catch(error => { 
-
-                    console.error('Error:', error); 
-
-                    getDirectRoute(start, end); 
-
-                }); 
-
-        } 
-
-         
-
-        // Function to calculate strategic waypoints to avoid drawn areas 
-
-        function calculateAvoidanceWaypoints(start, end) { 
-
-            var waypoints = []; 
-
-             
-
-            // For each avoidance area, calculate waypoints to go around it 
-
-            avoidanceAreas.forEach(function(area) { 
-
-                var areaWaypoints = calculateWaypointsAroundArea(start, end, area); 
-
-                waypoints = waypoints.concat(areaWaypoints); 
-
-            }); 
-
-             
-
-            return waypoints; 
-
-        } 
-
-         
-
-        // Function to calculate waypoints around a specific area 
-
-        function calculateWaypointsAroundArea(start, end, area) { 
-
-            var waypoints = []; 
-
-             
-
-            // Calculate the bounding box of the area 
-
-            var bounds = getPolygonBounds(area); 
-
-            if (!bounds) return waypoints; 
-
-             
-
-            // Calculate the center of the area 
-
-            var centerLat = (bounds.minLat + bounds.maxLat) / 2; 
-
-            var centerLng = (bounds.minLng + bounds.maxLng) / 2; 
-
-             
-
-            // Calculate direction from start to end 
-
-            var dx = end[1] - start[1]; 
-
-            var dy = end[0] - start[0]; 
-
-             
-
-            // Calculate perpendicular direction (for going around) 
-
-            var perpDx = -dy; 
-
-            var perpDy = dx; 
-
-             
-
-            // Normalize 
-
-            var length = Math.sqrt(perpDx * perpDx + perpDy * perpDy); 
-
-            perpDx /= length; 
-
-            perpDy /= length; 
-
-             
-
-            // Calculate waypoints on both sides of the area 
-
-            var avoidanceDistance = Math.max( 
-
-                (bounds.maxLat - bounds.minLat) * 1.5, 
-
-                (bounds.maxLng - bounds.minLng) * 1.5 
-
-            ); 
-
-             
-
-            // Try both sides and see which one creates a better route 
-
-            var leftWaypoint = [ 
-
-                centerLat + perpDy * avoidanceDistance, 
-
-                centerLng + perpDx * avoidanceDistance 
-
-            ]; 
-
-             
-
-            var rightWaypoint = [ 
-
-                centerLat - perpDy * avoidanceDistance, 
-
-                centerLng - perpDx * avoidanceDistance 
-
-            ]; 
-
-             
-
-            // Check which waypoint is better (further from other avoidance areas) 
-
-            var leftScore = calculateWaypointScore(leftWaypoint); 
-
-            var rightScore = calculateWaypointScore(rightWaypoint); 
-
-             
-
-            if (leftScore > rightScore) { 
-
-                waypoints.push(leftWaypoint); 
-
-            } else { 
-
-                waypoints.push(rightWaypoint); 
-
-            } 
-
-             
-
-            return waypoints; 
-
-        } 
-
-         
-
-        // Function to calculate how good a waypoint is (higher is better) 
-
-        function calculateWaypointScore(waypoint) { 
-
-            var score = 0; 
-
-             
-
-            // Prefer waypoints that are far from avoidance areas 
-
-            avoidanceAreas.forEach(function(area) { 
-
-                var distance = distanceToPolygon(waypoint, area); 
-
-                score += Math.max(0, distance); 
-
-            }); 
-
-             
-
-            return score; 
-
-        } 
-
-         
-
-        // Function to calculate distance from point to polygon 
-
-        function distanceToPolygon(point, polygon) { 
-
-            var minDistance = Infinity; 
-
-            var coords = polygon.coordinates[0]; 
-
-             
-
-            for (var i = 0; i < coords.length; i++) { 
-
-                var p1 = [coords[i][1], coords[i][0]]; 
-
-                var p2 = [coords[(i + 1) % coords.length][1], coords[(i + 1) % coords.length][0]]; 
-
-                 
-
-                var distance = distanceToSegment(point, p1, p2); 
-
-                minDistance = Math.min(minDistance, distance); 
-
-            } 
-
-             
-
-            return minDistance; 
-
-        } 
-
-         
-
-        // Function to calculate distance from point to line segment 
-
-        function distanceToSegment(point, lineStart, lineEnd) { 
-
-            var A = point[0] - lineStart[0]; 
-
-            var B = point[1] - lineStart[1]; 
-
-            var C = lineEnd[0] - lineStart[0]; 
-
-            var D = lineEnd[1] - lineStart[1]; 
-
-             
-
-            var dot = A * C + B * D; 
-
-            var lenSq = C * C + D * D; 
-
-            var param = lenSq !== 0 ? dot / lenSq : -1; 
-
-             
-
-            var xx, yy; 
-
-             
-
-            if (param < 0) { 
-
-                xx = lineStart[0]; 
-
-                yy = lineStart[1]; 
-
-            } else if (param > 1) { 
-
-                xx = lineEnd[0]; 
-
-                yy = lineEnd[1]; 
-
-            } else { 
-
-                xx = lineStart[0] + param * C; 
-
-                yy = lineStart[1] + param * D; 
-
-            } 
-
-             
-
-            var dx = point[0] - xx; 
-
-            var dy = point[1] - yy; 
-
-            return Math.sqrt(dx * dx + dy * dy); 
-
-        } 
-
-         
-
-        // Function to get bounding box of polygon 
-
-        function getPolygonBounds(polygon) { 
-
-            if (!polygon.coordinates || polygon.coordinates.length === 0) return null; 
-
-             
-
-            var coords = polygon.coordinates[0]; 
-
-            var minLat = Infinity, maxLat = -Infinity, minLng = Infinity, maxLng = -Infinity; 
-
-             
-
-            coords.forEach(function(coord) { 
-
-                minLat = Math.min(minLat, coord[1]); 
-
-                maxLat = Math.max(maxLat, coord[1]); 
-
-                minLng = Math.min(minLng, coord[0]); 
-
-                maxLng = Math.max(maxLng, coord[0]); 
-
-            }); 
-
-             
-
-            return { minLat, maxLat, minLng, maxLng }; 
-
-        } 
-
-         
-
-        // Function to get direct route (no avoidance) 
-
-        function getDirectRoute(start, end) { 
-
-            var coords = start[1] + ',' + start[0] + ';' + end[1] + ',' + end[0]; 
-
-            var url = 'https://router.project-osrm.org/route/v1/driving/' + coords +  
-
-                     '?overview=full&geometries=geojson&steps=true'; 
-
-             
-
-            fetch(url) 
-
-                .then(response => response.json()) 
-
-                .then(data => { 
-
-                    if (data.code === 'Ok') { 
-
-                        displayRoute(data.routes[0]); 
-
-                        if (avoidanceAreas.length > 0) { 
-
-                            document.getElementById('avoidance-status').textContent =  
-
-                                '⚠ Route may pass through avoidance areas'; 
-
-                            document.getElementById('avoidance-status').className = 'warning-message'; 
-
-                        } 
-
-                    } else { 
-
-                        document.getElementById('routeInfo').style.display = 'none'; 
-
-                        alert('Error calculating route: ' + data.message); 
-
-                    } 
-
-                }) 
-
-                .catch(error => { 
-
-                    console.error('Error:', error); 
-
-                    document.getElementById('routeInfo').style.display = 'none'; 
-
-                    alert('Error calculating route. Please try again.'); 
-
-                }); 
-
-        } 
-
-         
-
-        // Function to clear waypoint markers 
-
-        function clearWaypointMarkers() { 
-
-            waypointMarkers.forEach(function(marker) { 
-
-                map.removeLayer(marker); 
-
-            }); 
-
-            waypointMarkers = []; 
-
-        } 
-
-         
-
-        // Function to display the route on the map 
-
-        function displayRoute(route) { 
-
-            var geometry = route.geometry; 
-
-             
-
-            routeLine = L.geoJSON(geometry, { 
-
-                style: { 
-
-                    color: 'blue', 
-
-                    weight: 6, 
-
-                    opacity: 0.7 
-
-                } 
-
-            }).addTo(map); 
-
-             
-
-            var duration = Math.round(route.duration / 60); 
-
-            var distance = (route.distance / 1000).toFixed(1); 
-
-             
-
-            var infoHtml = '<strong>Route Information:</strong><br>' + 
-
-                          'Duration: ' + duration + ' minutes<br>' + 
-
-                          'Distance: ' + distance + ' km<br>' + 
-
-                          '<small>Start: ' + document.getElementById('start').value + '<br>' + 
-
-                          'End: ' + document.getElementById('end').value + '</small>'; 
-
-             
-
-            if (avoidanceAreas.length > 0) { 
-
-                infoHtml += '<br><small style="color: #ff9800;">Routing around ' + avoidanceAreas.length + ' avoidance area(s)</small>'; 
-
-            } 
-
-             
-
-            document.getElementById('routeInfo').innerHTML = infoHtml; 
-
-            document.getElementById('routeInfo').style.display = 'block'; 
-
-        } 
-
-         
-
-        // Function to toggle avoidance mode 
-
-        function toggleAvoidanceMode() { 
-
-            avoidanceMode = !avoidanceMode; 
-
-            var avoidanceBtn = document.getElementById('avoidance-btn'); 
-
-            var avoidanceControls = document.getElementById('avoidance-controls'); 
-
-             
-
-            if (avoidanceMode) { 
-
-                avoidanceBtn.textContent = 'Cancel Drawing'; 
-
-                avoidanceBtn.style.background = '#f44336'; 
-
-                avoidanceControls.style.display = 'block'; 
-
-                startDrawingMode(); 
-
-            } else { 
-
-                avoidanceBtn.textContent = 'Draw Avoidance Areas'; 
-
-                avoidanceBtn.style.background = '#ff9800'; 
-
-                avoidanceControls.style.display = 'none'; 
-
-                stopDrawingMode(); 
-
-            } 
-
-        } 
-
-         
-
-        // Function to start drawing mode 
-
-        function startDrawingMode() { 
-
-            map.off('click'); 
-
-            map.off('dblclick'); 
-
-             
-
-            map.getContainer().style.cursor = 'crosshair'; 
-
-             
-
-            map.on('click', function(e) { 
-
-                if (!currentPolygon) { 
-
-                    currentPolygonPoints = [e.latlng]; 
-
-                    currentPolygon = L.polygon([currentPolygonPoints], { 
-
-                        color: 'red', 
-
-                        weight: 2, 
-
-                        fillColor: 'red', 
-
-                        fillOpacity: 0.3, 
-
-                        dashArray: '5, 5' 
-
-                    }).addTo(map); 
-
-                } else { 
-
-                    currentPolygonPoints.push(e.latlng); 
-
-                    currentPolygon.setLatLngs([currentPolygonPoints]); 
-
-                } 
-
-            }); 
-
-             
-
-            map.on('dblclick', function(e) { 
-
-                if (currentPolygon && currentPolygonPoints.length >= 3) { 
-
-                    finishCurrentPolygon(); 
-
-                } 
-
-            }); 
-
-        } 
-
-         
-
-        // Function to stop drawing mode 
-
-        function stopDrawingMode() { 
-
-            map.getContainer().style.cursor = ''; 
-
-            map.off('click'); 
-
-            map.off('dblclick'); 
-
-             
-
-            if (currentPolygon) { 
-
-                map.removeLayer(currentPolygon); 
-
-                currentPolygon = null; 
-
-                currentPolygonPoints = []; 
-
-            } 
-
-        } 
-
-         
-
-        // Function to finish the current polygon 
-
-        function finishCurrentPolygon() { 
-
-            if (currentPolygon && currentPolygonPoints.length >= 3) { 
-
-                var geoJsonPolygon = { 
-
-                    type: "Polygon", 
-
-                    coordinates: [currentPolygonPoints.map(function(latlng) { 
-
-                        return [latlng.lng, latlng.lat]; 
-
-                    })] 
-
-                }; 
-
-                 
-
-                avoidanceAreas.push(geoJsonPolygon); 
-
-                avoidancePolygons.push(currentPolygon); 
-
-                 
-
-                currentPolygon.setStyle({ 
-
-                    dashArray: null, 
-
-                    fillOpacity: 0.5 
-
-                }); 
-
-                 
-
-                addToAvoidanceList(geoJsonPolygon, avoidanceAreas.length - 1); 
-
-                 
-
-                currentPolygon = null; 
-
-                currentPolygonPoints = []; 
-
-                 
-
-                if (routeLine) { 
-
-                    calculateRoute(); 
-
-                } 
-
-            } 
-
-        } 
-
-         
-
-        // Function to finish drawing mode 
-
-        function finishDrawing() { 
-
-            if (currentPolygon) { 
-
-                finishCurrentPolygon(); 
-
-            } 
-
-            toggleAvoidanceMode(); 
-
-        } 
-
-         
-
-        // Function to add an avoidance area to the list 
-
-        function addToAvoidanceList(polygon, index) { 
-
-            var avoidanceList = document.getElementById('avoidance-list'); 
-
-            var item = document.createElement('div'); 
-
-            item.className = 'avoidance-item'; 
-
-            item.innerHTML = 'Area ' + (index + 1) +  
-
-                            ' <button class="remove-avoidance" onclick="removeAvoidanceArea(' + index + ')">Remove</button>'; 
-
-            avoidanceList.appendChild(item); 
-
-        } 
-
-         
-
-        // Function to remove an avoidance area 
-
-        function removeAvoidanceArea(index) { 
-
-            if (index >= 0 && index < avoidanceAreas.length) { 
-
-                avoidanceAreas.splice(index, 1); 
-
-                if (avoidancePolygons[index]) { 
-
-                    map.removeLayer(avoidancePolygons[index]); 
-
-                    avoidancePolygons.splice(index, 1); 
-
-                } 
-
-                 
-
-                updateAvoidanceList(); 
-
-                 
-
-                document.getElementById('avoidance-status').textContent = 'Draw areas you want the route to avoid'; 
-
-                document.getElementById('avoidance-status').className = 'warning-message'; 
-
-                 
-
-                if (routeLine) { 
-
-                    calculateRoute(); 
-
-                } 
-
-            } 
-
-        } 
-
-         
-
-        // Function to update the avoidance list 
-
-        function updateAvoidanceList() { 
-
-            var avoidanceList = document.getElementById('avoidance-list'); 
-
-            avoidanceList.innerHTML = ''; 
-
-             
-
-            avoidanceAreas.forEach(function(polygon, index) { 
-
-                addToAvoidanceList(polygon, index); 
-
-            }); 
-
-        } 
-
-         
-
-        // Function to clear all avoidance areas 
-
-        function clearAvoidanceAreas() { 
-
-            avoidancePolygons.forEach(function(polygon) { 
-
-                map.removeLayer(polygon); 
-
-            }); 
-
-             
-
-            avoidanceAreas = []; 
-
-            avoidancePolygons = []; 
-
-             
-
-            updateAvoidanceList(); 
-
-             
-
-            document.getElementById('avoidance-status').textContent = 'Draw areas you want the route to avoid'; 
-
-            document.getElementById('avoidance-status').className = 'warning-message'; 
-
-             
-
-            if (routeLine) { 
-
-                calculateRoute(); 
-
-            } 
-
-        } 
-
-         
-
-        // Function to clear the route 
-
-        function clearRoute() { 
-
-            if (startMarker) { 
-
-                map.removeLayer(startMarker); 
-
-                startMarker = null; 
-
-            } 
-
-            if (endMarker) { 
-
-                map.removeLayer(endMarker); 
-
-                endMarker = null; 
-
-            } 
-
-            if (routeLine) { 
-
-                map.removeLayer(routeLine); 
-
-                routeLine = null; 
-
-            } 
-
-             
-
-            clearWaypointMarkers(); 
-
-             
-
-            document.getElementById('start').value = ''; 
-
-            document.getElementById('end').value = ''; 
-
-            document.getElementById('routeInfo').style.display = 'none'; 
-
-            startCoords = null; 
-
-            endCoords = null; 
-
-            updateCalculateButton(); 
-
-             
-
-            closeAllLists(); 
-
-        } 
-
-         
-
-        // Initialize calculate button state 
-
-        updateCalculateButton(); 
-
-    </script> 
-
-</body> 
-
-</html> 
-
- 
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Hazard-Aware Routing Demo</title>
+
+  <!-- Leaflet CSS -->
+  <link
+    rel="stylesheet"
+    href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+  />
+  <!-- Leaflet.draw CSS -->
+  <link
+    rel="stylesheet"
+    href="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.css"
+  />
+
+  <style>
+    html, body {
+      height: 100%;
+      margin: 0;
+      padding: 0;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    #map {
+      height: 100%;
+      width: 100%;
+    }
+
+    .control-panel {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      z-index: 1000;
+      background: white;
+      padding: 10px 12px;
+      border-radius: 8px;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+      max-width: 260px;
+      font-size: 13px;
+    }
+
+    .control-panel h2 {
+      margin: 0 0 4px;
+      font-size: 16px;
+    }
+
+    .control-panel button {
+      margin: 2px 0;
+      padding: 4px 8px;
+      border-radius: 6px;
+      border: 1px solid #ccc;
+      background: #f5f5f5;
+      cursor: pointer;
+      font-size: 13px;
+    }
+
+    .control-panel button.active {
+      background: #007bff;
+      color: white;
+      border-color: #007bff;
+    }
+
+    .info-line {
+      margin-top: 4px;
+    }
+
+    .small {
+      font-size: 11px;
+      color: #555;
+    }
+  </style>
+</head>
+<body>
+
+<div id="map"></div>
+
+<div class="control-panel">
+  <h2>Safe Route Demo</h2>
+  <p class="small">
+    1) Click <b>Start</b> then click on the map.<br />
+    2) Click <b>End</b> then click on the map.<br />
+    3) Draw avoid zones with the draw tools (left side of map).<br />
+    4) Click <b>Get Safe Route</b>.
+  </p>
+
+  <div>
+    <button id="btn-start">Set Start</button>
+    <button id="btn-end">Set End</button>
+  </div>
+
+  <div style="margin-top: 6px;">
+    <button id="btn-route">Get Safe Route</button>
+  </div>
+
+  <div class="info-line small" id="info-start">Start: not set</div>
+  <div class="info-line small" id="info-end">End: not set</div>
+  <div class="info-line small" id="info-avoid">Avoid zones: 0</div>
+  <div class="info-line small" id="info-hazards">Hazard polygons: 1 (demo)</div>
+  <div class="info-line small" id="info-status">Status: idle</div>
+
+  <p class="small" style="margin-top: 6px;">
+    This demo uses OpenRouteService with OpenStreetMap data and a sample hazard polygon.
+  </p>
+</div>
+
+<!-- Leaflet JS -->
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<!-- Leaflet.draw JS -->
+<script src="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.js"></script>
+
+<script>
+  // ====== CONFIG ======
+  const ORS_API_KEY = "eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6ImFlY2U1Y2I5NGMwNTQ1YTBhNWU3MGJmZmQ4MmM1YjQ2IiwiaCI6Im11cm11cjY0In0="; // <-- Put your ORS key here
+  const ORS_URL = "https://api.openrouteservice.org/v2/directions/driving-car/geojson";
+
+  // ====== MAP SETUP ======
+  const map = L.map("map").setView([41.65, -83.54], 11); // Center roughly around Toledo
+
+  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    maxZoom: 19,
+    attribution: "&copy; OpenStreetMap contributors"
+  }).addTo(map);
+
+  // FeatureGroup for user-drawn avoid polygons
+  const drawnItems = new L.FeatureGroup();
+  map.addLayer(drawnItems);
+
+  // Leaflet.draw control
+  const drawControl = new L.Control.Draw({
+    edit: {
+      featureGroup: drawnItems
+    },
+    draw: {
+      polygon: true,
+      rectangle: true,
+      polyline: false,
+      circle: false,
+      circlemarker: false,
+      marker: false
+    }
+  });
+  map.addControl(drawControl);
+
+  // ====== STATE ======
+  let clickMode = null; // "start" | "end" | null
+
+  let startMarker = null;
+  let endMarker = null;
+  let startCoords = null; // [lat, lng]
+  let endCoords = null;   // [lat, lng]
+
+  let avoidFeatures = []; // GeoJSON features from drawnItems
+  let routeLayer = null;  // GeoJSON layer for route
+
+  // Demo hazard polygon (you can replace with real hazard data later)
+  const hazardFeatures = [
+    {
+      type: "Feature",
+      properties: { source: "demo", hazard: "wildfire", severity: "high" },
+      geometry: {
+        type: "Polygon",
+        coordinates: [[
+          [-83.60, 41.66],
+          [-83.57, 41.66],
+          [-83.57, 41.69],
+          [-83.60, 41.69],
+          [-83.60, 41.66]
+        ]]
+      }
+    }
+  ];
+
+  const hazardsLayer = L.geoJSON(hazardFeatures, {
+    style: { color: "red", weight: 2, dashArray: "4 2" }
+  }).addTo(map);
+
+  // ====== UI ELEMENTS ======
+  const btnStart = document.getElementById("btn-start");
+  const btnEnd = document.getElementById("btn-end");
+  const btnRoute = document.getElementById("btn-route");
+
+  const infoStart = document.getElementById("info-start");
+  const infoEnd = document.getElementById("info-end");
+  const infoAvoid = document.getElementById("info-avoid");
+  const infoHazards = document.getElementById("info-hazards");
+  const infoStatus = document.getElementById("info-status");
+
+  infoHazards.textContent = "Hazard polygons: " + hazardFeatures.length;
+
+  function setStatus(msg) {
+    infoStatus.textContent = "Status: " + msg;
+  }
+
+  function updateInfoPanels() {
+    infoStart.textContent = "Start: " + (startCoords ? startCoords[0].toFixed(4) + ", " + startCoords[1].toFixed(4) : "not set");
+    infoEnd.textContent = "End: " + (endCoords ? endCoords[0].toFixed(4) + ", " + endCoords[1].toFixed(4) : "not set");
+    infoAvoid.textContent = "Avoid zones: " + avoidFeatures.length;
+  }
+
+  function setClickMode(mode) {
+    clickMode = mode;
+    btnStart.classList.toggle("active", mode === "start");
+    btnEnd.classList.toggle("active", mode === "end");
+  }
+
+  btnStart.addEventListener("click", () => setClickMode("start"));
+  btnEnd.addEventListener("click", () => setClickMode("end"));
+
+  // ====== MAP CLICK TO SET START/END ======
+  map.on("click", (e) => {
+    if (!clickMode) return;
+
+    const latlng = e.latlng;
+
+    if (clickMode === "start") {
+      if (startMarker) map.removeLayer(startMarker);
+      startMarker = L.marker(latlng).addTo(map).bindPopup("Start");
+      startCoords = [latlng.lat, latlng.lng];
+    } else if (clickMode === "end") {
+      if (endMarker) map.removeLayer(endMarker);
+      endMarker = L.marker(latlng).addTo(map).bindPopup("End");
+      endCoords = [latlng.lat, latlng.lng];
+    }
+
+    updateInfoPanels();
+  });
+
+  // ====== HANDLE DRAW EVENTS (AVOID ZONES) ======
+  function refreshAvoidFeatures() {
+    const geojson = drawnItems.toGeoJSON();
+    avoidFeatures = geojson.features || [];
+    updateInfoPanels();
+  }
+
+  map.on(L.Draw.Event.CREATED, (e) => {
+    drawnItems.addLayer(e.layer);
+    refreshAvoidFeatures();
+  });
+
+  map.on(L.Draw.Event.EDITED, () => {
+    refreshAvoidFeatures();
+  });
+
+  map.on(L.Draw.Event.DELETED, () => {
+    refreshAvoidFeatures();
+  });
+
+  // ====== HELPER: BUILD MULTIPOLYGON FOR ORS ======
+  function buildAvoidMultiPolygon(features) {
+    const polys = [];
+
+    features.forEach((f) => {
+      if (!f || !f.geometry) return;
+
+      if (f.geometry.type === "Polygon") {
+        polys.push(f.geometry.coordinates);
+      } else if (f.geometry.type === "MultiPolygon") {
+        f.geometry.coordinates.forEach((poly) => polys.push(poly));
+      }
+      // ignore other geometry types (LineString, Point, etc.)
+    });
+
+    if (!polys.length) return null;
+
+    return {
+      type: "MultiPolygon",
+      coordinates: polys
+    };
+  }
+
+  // ====== ROUTING FUNCTION ======
+  async function getSafeRoute() {
+    if (!startCoords || !endCoords) {
+      alert("Set both a start and an end point first.");
+      return;
+    }
+
+    setStatus("Requesting route...");
+
+    // ORS expects [lon, lat]
+    const startLonLat = [startCoords[1], startCoords[0]];
+    const endLonLat = [endCoords[1], endCoords[0]];
+
+    // Combine user avoid polygons + hazard polygons
+    const combinedAvoidFeatures = [
+      ...avoidFeatures,
+      ...hazardFeatures
+    ];
+
+    const body = {
+      coordinates: [startLonLat, endLonLat],
+      format: "geojson",
+      instructions: false,
+      options: {}
+    };
+
+    // Build MultiPolygon geometry for avoid_polygons
+    const avoidGeom = buildAvoidMultiPolygon(combinedAvoidFeatures);
+    if (avoidGeom) {
+      body.options.avoid_polygons = avoidGeom;
+    }
+
+    try {
+      const resp = await fetch(ORS_URL, {
+        method: "POST",
+        headers: {
+          "Authorization": ORS_API_KEY,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify(body)
+      });
+
+      if (!resp.ok) {
+        const text = await resp.text();
+        console.error("ORS error:", text);
+        alert("Routing failed: " + resp.status + " - " + text);
+        setStatus("error");
+        return;
+      }
+
+      const data = await resp.json();
+
+      // Remove old route if exists
+      if (routeLayer) {
+        map.removeLayer(routeLayer);
+      }
+
+      routeLayer = L.geoJSON(data, {
+        style: { color: "blue", weight: 4 }
+      }).addTo(map);
+
+      // Fit map to route bounds if available
+      try {
+        const bounds = routeLayer.getBounds();
+        if (bounds.isValid()) {
+          map.fitBounds(bounds, { padding: [30, 30] });
+        }
+      } catch (err) {
+        console.warn("Could not fit bounds:", err);
+      }
+
+      setStatus("route loaded");
+    } catch (err) {
+      console.error(err);
+      alert("Routing request failed. Check console for details.");
+      setStatus("error");
+    }
+  }
+
+  btnRoute.addEventListener("click", getSafeRoute);
+
+  // Initial status
+  updateInfoPanels();
+  setStatus("idle");
+
+  // ====== OPTIONAL: where you'd fetch real hazard data ======
+  // For a real app, you could replace hazardFeatures with data from
+  // USGS, NOAA, NASA, etc.
+</script>
+
+</body>
+</html>
