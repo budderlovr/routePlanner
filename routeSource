@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>Hazard-Aware Routing Demo</title>
+  <title>Hazard-Aware Routing Demo (Alerts + Snapping + Autocomplete)</title>
 
   <!-- Leaflet CSS -->
   <link
@@ -37,7 +37,7 @@
       padding: 10px 12px;
       border-radius: 8px;
       box-shadow: 0 2px 6px rgba(0,0,0,0.2);
-      max-width: 260px;
+      max-width: 310px;
       font-size: 13px;
     }
 
@@ -70,6 +70,56 @@
       font-size: 11px;
       color: #555;
     }
+
+    .field-label {
+      font-size: 11px;
+      margin-top: 6px;
+      margin-bottom: 2px;
+      font-weight: 600;
+    }
+
+    .text-input {
+      width: 100%;
+      box-sizing: border-box;
+      padding: 4px 6px;
+      font-size: 12px;
+      border-radius: 4px;
+      border: 1px solid #ccc;
+      margin-bottom: 2px;
+    }
+
+    .autocomplete-list {
+      position: relative;
+    }
+
+    .autocomplete-dropdown {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      background: #fff;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      max-height: 140px;
+      overflow-y: auto;
+      z-index: 1100;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+    }
+
+    .autocomplete-item {
+      padding: 4px 6px;
+      font-size: 12px;
+      cursor: pointer;
+    }
+
+    .autocomplete-item:hover {
+      background: #007bff;
+      color: #fff;
+    }
+
+    .autocomplete-hidden {
+      display: none;
+    }
   </style>
 </head>
 <body>
@@ -79,29 +129,43 @@
 <div class="control-panel">
   <h2>Safe Route Demo</h2>
   <p class="small">
-    1) Click <b>Start</b> then click on the map.<br />
-    2) Click <b>End</b> then click on the map.<br />
-    3) Draw avoid zones with the draw tools (left side of map).<br />
-    4) Click <b>Get Safe Route</b>.
+    • Type a <b>Start</b> and <b>Destination</b> address, or use map clicks.<br />
+    • Start/end are snapped to the nearest road (Overpass).<br />
+    • Purple/orange/red shaded areas = active NWS alerts (avoided in routing).<br />
+    • Draw your own avoid zones with the tools on the left.
   </p>
 
-  <div>
-    <button id="btn-start">Set Start</button>
-    <button id="btn-end">Set End</button>
+  <div class="field-label">Start address</div>
+  <div class="autocomplete-list">
+    <input id="start-input" class="text-input" placeholder="e.g. Toledo, OH" />
+    <div id="start-suggestions" class="autocomplete-dropdown autocomplete-hidden"></div>
+  </div>
+
+  <div class="field-label">Destination address</div>
+  <div class="autocomplete-list">
+    <input id="end-input" class="text-input" placeholder="e.g. Ann Arbor, MI" />
+    <div id="end-suggestions" class="autocomplete-dropdown autocomplete-hidden"></div>
+  </div>
+
+  <div style="margin-top: 4px;">
+    <button id="btn-start">Click on map to set Start</button>
+    <button id="btn-end">Click on map to set End</button>
   </div>
 
   <div style="margin-top: 6px;">
+    <button id="btn-hazards">Refresh Hazards</button>
     <button id="btn-route">Get Safe Route</button>
   </div>
 
   <div class="info-line small" id="info-start">Start: not set</div>
   <div class="info-line small" id="info-end">End: not set</div>
   <div class="info-line small" id="info-avoid">Avoid zones: 0</div>
-  <div class="info-line small" id="info-hazards">Hazard polygons: 1 (demo)</div>
+  <div class="info-line small" id="info-hazards">Hazard polygons: 0</div>
   <div class="info-line small" id="info-status">Status: idle</div>
 
   <p class="small" style="margin-top: 6px;">
-    This demo uses OpenRouteService with OpenStreetMap data and a sample hazard polygon.
+    Hazards from <b>api.weather.gov</b>, routing via <b>OpenRouteService</b>,
+    geocoding via <b>Nominatim</b>, snapping via <b>Overpass API</b>.
   </p>
 </div>
 
@@ -112,11 +176,26 @@
 
 <script>
   // ====== CONFIG ======
-  const ORS_API_KEY = "eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6ImFlY2U1Y2I5NGMwNTQ1YTBhNWU3MGJmZmQ4MmM1YjQ2IiwiaCI6Im11cm11cjY0In0="; // <-- Put your ORS key here
+  // Put your real OpenRouteService API key here:
+  const ORS_API_KEY = "eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6ImFlY2U1Y2I5NGMwNTQ1YTBhNWU3MGJmZmQ4MmM1YjQ2IiwiaCI6Im11cm11cjY0In0=";
   const ORS_URL = "https://api.openrouteservice.org/v2/directions/driving-car/geojson";
 
+  // Overpass API endpoint for nearest road search
+  const OVERPASS_URL = "https://overpass-api.de/api/interpreter";
+
+  // Nominatim geocoding (autocomplete)
+  const NOMINATIM_URL = "https://nominatim.openstreetmap.org/search";
+
+  // NWS active alert GeoJSON (US-wide)
+  const NWS_ALERTS_URL =
+    "https://api.weather.gov/alerts/active?status=actual&message_type=alert";
+
+  // ORS limit: 2.0E8 m²
+  const MAX_AVOID_AREA_M2 = 2e8;
+  const METERS_PER_DEG = 111139; // rough average for both lat/lon
+
   // ====== MAP SETUP ======
-  const map = L.map("map").setView([41.65, -83.54], 11); // Center roughly around Toledo
+  const map = L.map("map").setView([41.65, -83.54], 5); // Zoomed out over US
 
   L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
     maxZoom: 19,
@@ -148,38 +227,38 @@
 
   let startMarker = null;
   let endMarker = null;
-  let startCoords = null; // [lat, lng]
-  let endCoords = null;   // [lat, lng]
+  let startCoords = null; // [lat, lng] snapped
+  let endCoords = null;   // [lat, lng] snapped
 
-  let avoidFeatures = []; // GeoJSON features from drawnItems
-  let routeLayer = null;  // GeoJSON layer for route
+  let avoidFeatures = [];    // GeoJSON features from drawnItems
+  let hazardFeatures = [];   // GeoJSON features from live alerts (filtered)
+  let routeLayer = null;     // GeoJSON layer for route
 
-  // Demo hazard polygon (you can replace with real hazard data later)
-  const hazardFeatures = [
-    {
-      type: "Feature",
-      properties: { source: "demo", hazard: "wildfire", severity: "high" },
-      geometry: {
-        type: "Polygon",
-        coordinates: [[
-          [-83.60, 41.66],
-          [-83.57, 41.66],
-          [-83.57, 41.69],
-          [-83.60, 41.69],
-          [-83.60, 41.66]
-        ]]
-      }
+  // Hazards layer container (brighter, filled polygons for visibility)
+  const hazardsLayer = L.geoJSON(null, {
+    style: (feature) => {
+      const sev = feature.properties && feature.properties.severity;
+      const base = {
+        weight: 3,
+        fillOpacity: 0.25,
+        opacity: 0.9
+      };
+      if (sev === "Extreme") return Object.assign({}, base, { color: "#000000", fillColor: "#ff0000" });
+      if (sev === "Severe") return Object.assign({}, base, { color: "#b30000", fillColor: "#ff4d4d" });
+      if (sev === "Moderate") return Object.assign({}, base, { color: "#e67300", fillColor: "#ffa64d" });
+      // minor / unknown
+      return Object.assign({}, base, { color: "#6a1b9a", fillColor: "#ce93d8" });
     }
-  ];
-
-  const hazardsLayer = L.geoJSON(hazardFeatures, {
-    style: { color: "red", weight: 2, dashArray: "4 2" }
   }).addTo(map);
+
+  // Bring hazards above route lines when zoomed out
+  hazardsLayer.bringToFront();
 
   // ====== UI ELEMENTS ======
   const btnStart = document.getElementById("btn-start");
   const btnEnd = document.getElementById("btn-end");
   const btnRoute = document.getElementById("btn-route");
+  const btnHazards = document.getElementById("btn-hazards");
 
   const infoStart = document.getElementById("info-start");
   const infoEnd = document.getElementById("info-end");
@@ -187,7 +266,10 @@
   const infoHazards = document.getElementById("info-hazards");
   const infoStatus = document.getElementById("info-status");
 
-  infoHazards.textContent = "Hazard polygons: " + hazardFeatures.length;
+  const startInput = document.getElementById("start-input");
+  const endInput = document.getElementById("end-input");
+  const startSuggestions = document.getElementById("start-suggestions");
+  const endSuggestions = document.getElementById("end-suggestions");
 
   function setStatus(msg) {
     infoStatus.textContent = "Status: " + msg;
@@ -197,6 +279,7 @@
     infoStart.textContent = "Start: " + (startCoords ? startCoords[0].toFixed(4) + ", " + startCoords[1].toFixed(4) : "not set");
     infoEnd.textContent = "End: " + (endCoords ? endCoords[0].toFixed(4) + ", " + endCoords[1].toFixed(4) : "not set");
     infoAvoid.textContent = "Avoid zones: " + avoidFeatures.length;
+    infoHazards.textContent = "Hazard polygons: " + hazardFeatures.length;
   }
 
   function setClickMode(mode) {
@@ -208,23 +291,167 @@
   btnStart.addEventListener("click", () => setClickMode("start"));
   btnEnd.addEventListener("click", () => setClickMode("end"));
 
-  // ====== MAP CLICK TO SET START/END ======
-  map.on("click", (e) => {
-    if (!clickMode) return;
+  // ====== OVERPASS ROAD SNAPPING ======
+  async function snapToRoad(lat, lng) {
+    const radius = 1000; // meters search radius
 
-    const latlng = e.latlng;
+    const query = `
+      [out:json];
+      way(around:${radius},${lat},${lng})["highway"];
+      (._;>;);
+      out geom;
+    `;
 
-    if (clickMode === "start") {
-      if (startMarker) map.removeLayer(startMarker);
-      startMarker = L.marker(latlng).addTo(map).bindPopup("Start");
-      startCoords = [latlng.lat, latlng.lng];
-    } else if (clickMode === "end") {
-      if (endMarker) map.removeLayer(endMarker);
-      endMarker = L.marker(latlng).addTo(map).bindPopup("End");
-      endCoords = [latlng.lat, latlng.lng];
+    const body = "data=" + encodeURIComponent(query);
+
+    const resp = await fetch(OVERPASS_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded"
+      },
+      body
+    });
+
+    if (!resp.ok) {
+      console.error("Overpass error:", await resp.text());
+      return null;
     }
 
-    updateInfoPanels();
+    const data = await resp.json();
+    const elements = data.elements || [];
+
+    // Filter to ways with geometry
+    const ways = elements.filter(el => el.type === "way" && Array.isArray(el.geometry) && el.geometry.length > 1);
+    if (!ways.length) {
+      return null;
+    }
+
+    // Point in meters relative to origin
+    const R = 6378137;
+    const lat0 = lat * Math.PI / 180;
+    const lon0 = lng * Math.PI / 180;
+
+    function toXY(phi, lam) {
+      const x = (lam - lon0) * Math.cos(lat0) * R;
+      const y = (phi - lat0) * R;
+      return { x, y };
+    }
+
+    // Convert clicked point to XY
+    const p = { x: 0, y: 0 }; // which is lat/lng itself as origin
+
+    let bestDist = Infinity;
+    let bestPoint = null;
+
+    // For each way, for each segment, compute closest point
+    ways.forEach(way => {
+      const geom = way.geometry;
+
+      for (let i = 0; i < geom.length - 1; i++) {
+        const g1 = geom[i];
+        const g2 = geom[i + 1];
+
+        const phi1 = g1.lat * Math.PI / 180;
+        const lam1 = g1.lon * Math.PI / 180;
+        const phi2 = g2.lat * Math.PI / 180;
+        const lam2 = g2.lon * Math.PI / 180;
+
+        const a = toXY(phi1, lam1);
+        const b = toXY(phi2, lam2);
+
+        const vx = b.x - a.x;
+        const vy = b.y - a.y;
+        const wx = p.x - a.x;
+        const wy = p.y - a.y;
+
+        const c1 = vx * wx + vy * wy;
+        const c2 = vx * vx + vy * vy;
+        let t = 0;
+        if (c2 > 0) {
+          t = c1 / c2;
+        }
+        if (t < 0) t = 0;
+        if (t > 1) t = 1;
+
+        const projX = a.x + t * vx;
+        const projY = a.y + t * vy;
+
+        const dx = projX - p.x;
+        const dy = projY - p.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+
+        if (dist < bestDist) {
+          bestDist = dist;
+
+          // Convert back to lat/lng
+          const projLat = (projY / R + lat0) * 180 / Math.PI;
+          const projLng = (projX / (R * Math.cos(lat0)) + lon0) * 180 / Math.PI;
+          bestPoint = { lat: projLat, lng: projLng };
+        }
+      }
+    });
+
+    if (!bestPoint) {
+      return null;
+    }
+
+    // If the snapped road point is extremely far, treat it as failure
+    if (bestDist > 3000) { // > 3km
+      return null;
+    }
+
+    return bestPoint;
+  }
+
+  async function handleClickFor(mode, latlng) {
+    setStatus(`snapping ${mode} to nearest road...`);
+
+    try {
+      const snapped = await snapToRoad(latlng.lat, latlng.lng);
+
+      const finalLatLng = snapped || latlng;
+
+      if (!snapped) {
+        console.warn("No road found nearby, using raw point.");
+        setStatus(`no nearby road for ${mode}, using clicked/geocoded point`);
+      } else {
+        setStatus(`${mode} snapped to nearest road`);
+      }
+
+      if (mode === "start") {
+        if (startMarker) map.removeLayer(startMarker);
+        startMarker = L.marker(finalLatLng).addTo(map).bindPopup("Start");
+        startCoords = [finalLatLng.lat, finalLatLng.lng];
+      } else if (mode === "end") {
+        if (endMarker) map.removeLayer(endMarker);
+        endMarker = L.marker(finalLatLng).addTo(map).bindPopup("End");
+        endCoords = [finalLatLng.lat, finalLatLng.lng];
+      }
+
+      updateInfoPanels();
+    } catch (err) {
+      console.error("Snap error:", err);
+      setStatus(`snap failed for ${mode}, using raw point`);
+
+      if (mode === "start") {
+        if (startMarker) map.removeLayer(startMarker);
+        startMarker = L.marker(latlng).addTo(map).bindPopup("Start");
+        startCoords = [latlng.lat, latlng.lng];
+      } else if (mode === "end") {
+        if (endMarker) map.removeLayer(endMarker);
+        endMarker = L.marker(latlng).addTo(map).bindPopup("End");
+        endCoords = [latlng.lat, latlng.lng];
+      }
+
+      updateInfoPanels();
+    }
+  }
+
+  // ====== MAP CLICK TO SET START/END (with snapping) ======
+  map.on("click", (e) => {
+    if (!clickMode) return;
+    const latlng = e.latlng;
+    handleClickFor(clickMode, latlng);
   });
 
   // ====== HANDLE DRAW EVENTS (AVOID ZONES) ======
@@ -247,6 +474,59 @@
     refreshAvoidFeatures();
   });
 
+  // ====== AREA HELPERS (approximate) ======
+
+  // Shoelace formula on one ring of [ [lon,lat], ... ]
+  function roughRingAreaDeg2(ring) {
+    let area = 0;
+    const n = ring.length;
+    if (n < 3) return 0;
+
+    for (let i = 0; i < n - 1; i++) {
+      const [x1, y1] = ring[i];
+      const [x2, y2] = ring[i + 1];
+      area += (x1 * y2 - x2 * y1);
+    }
+    // close the ring
+    const [x1, y1] = ring[n - 1];
+    const [x2, y2] = ring[0];
+    area += (x1 * y2 - x2 * y1);
+
+    return Math.abs(area) / 2; // in degrees² (lon/lat)
+  }
+
+  // Rough feature area in m² using flat approximation
+  function featureAreaM2(feature) {
+    if (!feature || !feature.geometry) return null;
+    const geom = feature.geometry;
+
+    if (geom.type === "Polygon") {
+      const rings = geom.coordinates || [];
+      if (!rings.length) return null;
+      const areaDeg2 = roughRingAreaDeg2(rings[0]); // outer ring only
+      return areaDeg2 * METERS_PER_DEG * METERS_PER_DEG;
+    }
+
+    if (geom.type === "MultiPolygon") {
+      const polys = geom.coordinates || [];
+      let sumDeg2 = 0;
+      polys.forEach((poly) => {
+        if (poly[0]) {
+          sumDeg2 += roughRingAreaDeg2(poly[0]);
+        }
+      });
+      return sumDeg2 * METERS_PER_DEG * METERS_PER_DEG;
+    }
+
+    return null;
+  }
+
+  function isWithinAreaLimit(feature) {
+    const a = featureAreaM2(feature);
+    if (a === null) return true; // non-polygonal, let it pass (won't be in avoid anyway)
+    return a <= MAX_AVOID_AREA_M2;
+  }
+
   // ====== HELPER: BUILD MULTIPOLYGON FOR ORS ======
   function buildAvoidMultiPolygon(features) {
     const polys = [];
@@ -259,7 +539,7 @@
       } else if (f.geometry.type === "MultiPolygon") {
         f.geometry.coordinates.forEach((poly) => polys.push(poly));
       }
-      // ignore other geometry types (LineString, Point, etc.)
+      // ignore other geometry types
     });
 
     if (!polys.length) return null;
@@ -270,37 +550,184 @@
     };
   }
 
+  // ====== LIVE HAZARDS FROM NWS (with area filtering) ======
+  async function updateHazardsFromAPI() {
+    setStatus("loading live hazards...");
+    try {
+      const resp = await fetch(NWS_ALERTS_URL);
+      if (!resp.ok) {
+        const text = await resp.text();
+        console.error("NWS error:", text);
+        setStatus("hazard load failed");
+        return;
+      }
+
+      const geojson = await resp.json();
+
+      const rawFeatures = [];
+      (geojson.features || []).forEach((f) => {
+        if (!f.geometry) return;
+        const t = f.geometry.type;
+        if (t !== "Polygon" && t !== "MultiPolygon") return;
+
+        rawFeatures.push({
+          type: "Feature",
+          properties: {
+            source: "NWS",
+            event: f.properties && f.properties.event,
+            severity: f.properties && f.properties.severity
+          },
+          geometry: f.geometry
+        });
+      });
+
+      // Filter out polygons larger than ORS limit
+      hazardFeatures = rawFeatures.filter(isWithinAreaLimit);
+
+      hazardsLayer.clearLayers();
+      if (hazardFeatures.length > 0) {
+        hazardsLayer.addData({
+          type: "FeatureCollection",
+          features: hazardFeatures
+        });
+      }
+
+      updateInfoPanels();
+      setStatus("live hazards loaded");
+    } catch (err) {
+      console.error("Hazard fetch error:", err);
+      setStatus("hazard load failed");
+    }
+  }
+
+  btnHazards.addEventListener("click", updateHazardsFromAPI);
+
+  // Load hazards at startup
+  updateHazardsFromAPI();
+
+  // ====== SIMPLE NOMINATIM AUTOCOMPLETE ======
+  let startTimer = null;
+  let endTimer = null;
+
+  function clearSuggestions(container) {
+    container.innerHTML = "";
+    container.classList.add("autocomplete-hidden");
+  }
+
+  function renderSuggestions(container, results, mode) {
+    container.innerHTML = "";
+    if (!results.length) {
+      container.classList.add("autocomplete-hidden");
+      return;
+    }
+    results.forEach(res => {
+      const item = document.createElement("div");
+      item.className = "autocomplete-item";
+      item.textContent = res.display_name;
+      item.addEventListener("click", () => {
+        clearSuggestions(container);
+        if (mode === "start") {
+          startInput.value = res.display_name;
+        } else {
+          endInput.value = res.display_name;
+        }
+        const latlng = { lat: parseFloat(res.lat), lng: parseFloat(res.lon) };
+        handleClickFor(mode, latlng);
+        map.setView(latlng, 11);
+      });
+      container.appendChild(item);
+    });
+    container.classList.remove("autocomplete-hidden");
+  }
+
+  async function fetchGeocodeSuggestions(query) {
+    const params = new URLSearchParams({
+      q: query,
+      format: "jsonv2",
+      addressdetails: "1",
+      limit: "5"
+    });
+    const url = `${NOMINATIM_URL}?${params.toString()}`;
+
+    const resp = await fetch(url, {
+      headers: {
+        // Nominatim prefers a valid User-Agent; browser sets one automatically.
+      }
+    });
+    if (!resp.ok) {
+      console.error("Nominatim error:", await resp.text());
+      return [];
+    }
+    return await resp.json();
+  }
+
+  startInput.addEventListener("input", () => {
+    clearSuggestions(startSuggestions);
+    const q = startInput.value.trim();
+    if (!q) return;
+    if (startTimer) clearTimeout(startTimer);
+    startTimer = setTimeout(async () => {
+      setStatus("searching start address...");
+      const results = await fetchGeocodeSuggestions(q);
+      renderSuggestions(startSuggestions, results, "start");
+      setStatus("idle");
+    }, 400);
+  });
+
+  endInput.addEventListener("input", () => {
+    clearSuggestions(endSuggestions);
+    const q = endInput.value.trim();
+    if (!q) return;
+    if (endTimer) clearTimeout(endTimer);
+    endTimer = setTimeout(async () => {
+      setStatus("searching destination address...");
+      const results = await fetchGeocodeSuggestions(q);
+      renderSuggestions(endSuggestions, results, "end");
+      setStatus("idle");
+    }, 400);
+  });
+
+  // Hide suggestion dropdowns on map click
+  map.on("click", () => {
+    clearSuggestions(startSuggestions);
+    clearSuggestions(endSuggestions);
+  });
+
   // ====== ROUTING FUNCTION ======
   async function getSafeRoute() {
     if (!startCoords || !endCoords) {
-      alert("Set both a start and an end point first.");
+      alert("Set both a start and an end point first (either via address or map click).");
+      return;
+    }
+    if (!ORS_API_KEY || ORS_API_KEY === "YOUR_OPENROUTESERVICE_API_KEY_HERE") {
+      alert("Please put your OpenRouteService API key in the HTML file (at the top of the script).");
       return;
     }
 
-    setStatus("Requesting route...");
+    setStatus("requesting route...");
 
     // ORS expects [lon, lat]
     const startLonLat = [startCoords[1], startCoords[0]];
     const endLonLat = [endCoords[1], endCoords[0]];
 
-    // Combine user avoid polygons + hazard polygons
-    const combinedAvoidFeatures = [
-      ...avoidFeatures,
-      ...hazardFeatures
-    ];
+    // Combine user avoid polygons + hazard polygons,
+    // and filter both by area to avoid ORS 2003
+    const allAvoid = [...avoidFeatures, ...hazardFeatures];
+    const safeAvoid = allAvoid.filter(isWithinAreaLimit);
+
+    const avoidGeom = buildAvoidMultiPolygon(safeAvoid);
+
+    const options = {};
+    if (avoidGeom) {
+      options.avoid_polygons = avoidGeom;
+    }
 
     const body = {
       coordinates: [startLonLat, endLonLat],
       format: "geojson",
       instructions: false,
-      options: {}
+      options
     };
-
-    // Build MultiPolygon geometry for avoid_polygons
-    const avoidGeom = buildAvoidMultiPolygon(combinedAvoidFeatures);
-    if (avoidGeom) {
-      body.options.avoid_polygons = avoidGeom;
-    }
 
     try {
       const resp = await fetch(ORS_URL, {
@@ -312,15 +739,27 @@
         body: JSON.stringify(body)
       });
 
+      const text = await resp.text();
+
       if (!resp.ok) {
-        const text = await resp.text();
         console.error("ORS error:", text);
-        alert("Routing failed: " + resp.status + " - " + text);
+
+        try {
+          const errJson = JSON.parse(text);
+          if (errJson.error && errJson.error.code === 2010) {
+            alert("Routing failed (code 2010): ORS could not snap your start/end to a road. Try another address or clicking closer to a visible road line.");
+          } else {
+            alert("Routing failed: " + resp.status + " - " + text);
+          }
+        } catch (e) {
+          alert("Routing failed: " + resp.status + " - " + text);
+        }
+
         setStatus("error");
         return;
       }
 
-      const data = await resp.json();
+      const data = JSON.parse(text);
 
       // Remove old route if exists
       if (routeLayer) {
@@ -354,10 +793,6 @@
   // Initial status
   updateInfoPanels();
   setStatus("idle");
-
-  // ====== OPTIONAL: where you'd fetch real hazard data ======
-  // For a real app, you could replace hazardFeatures with data from
-  // USGS, NOAA, NASA, etc.
 </script>
 
 </body>
